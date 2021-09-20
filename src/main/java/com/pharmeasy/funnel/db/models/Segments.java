@@ -1,19 +1,32 @@
 package com.pharmeasy.funnel.db.models;
 
-import javax.persistence.Column;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import com.pharmeasy.funnel.model.SegmentStatus;
+import lombok.Data;
+
+import javax.persistence.*;
 import java.time.ZonedDateTime;
 
+@Data
+@Entity
+@Table(name = "segments")
 public class Segments {
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE)
-    private int id;
+    private long id;
     private String name;
     private String query;
-    private int status;
+    private SegmentStatus status;
+    private String type;
+
+    @Column(name = "cron_string")
+    private String cronString;
+
+    private String metadata;
+    private String storage;
+
+    @Column(name = "parent_segment_id")
+    private String parentSegmentId;
 
     @Column(name = "created_at")
     private ZonedDateTime createdAt;
@@ -21,6 +34,13 @@ public class Segments {
     @Column(name = "updated_at")
     private ZonedDateTime updatedAt;
 
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(name = "updated_by")
+    private String updatedBy;
+
     @Column(name = "deleted_at")
     private ZonedDateTime deletedAt;
+
 }

@@ -15,6 +15,7 @@ import javax.sql.DataSource;
 @ConfigurationProperties(prefix = "spring.hive")
 public class HiveConfig {
 
+    @Value("${spring.hive.url}")
     private String url;
     private String username;
     private String password;

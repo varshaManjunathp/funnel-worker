@@ -1,0 +1,1 @@
+return redis.call('TYPE', KEYS[1])

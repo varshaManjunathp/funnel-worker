@@ -1,0 +1,1 @@
+return redis.call('SMEMBERS', KEYS[1])

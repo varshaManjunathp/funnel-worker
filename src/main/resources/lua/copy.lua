@@ -1,0 +1,1 @@
+redis.call('SET', KEYS[2], redis.call('GET', KEYS[1])); return 1
