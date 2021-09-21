@@ -2,8 +2,11 @@ package com.pharmeasy.funnel.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Lists;
+import com.pharmeasy.funnel.db.models.EntitySegments;
 import com.pharmeasy.funnel.db.models.SegmentStore;
 import com.pharmeasy.funnel.db.models.Segments;
+import com.pharmeasy.funnel.db.repository.EntityRepository;
 import com.pharmeasy.funnel.db.repository.SegmentRepository;
 import com.pharmeasy.funnel.db.repository.SegmentStoreRepository;
 import com.pharmeasy.funnel.exception.ExceptionUtils;
@@ -11,18 +14,22 @@ import com.pharmeasy.funnel.model.*;
 import com.pharmeasy.funnel.utils.RedisQueueConsumer;
 import com.pharmeasy.funnel.utils.RedisScripting;
 import lombok.AllArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
 public class SegmentUpdateService {
 
     SegmentRepository segmentRepository;
+
+    EntityRepository entityRepository;
 
     SegmentStoreRepository segmentStoreRepository;
 
@@ -59,24 +66,38 @@ public class SegmentUpdateService {
                 String segmentId = message.getId();
                 Segments segment = validateSegment(segmentId);
                 String segmentType = redisScripting.getSegmentType();
+                String newTransaction = UUID.randomUUID().toString();
                 if (segmentType.equalsIgnoreCase("none")) {
-                    String updatedId =  updateOldSegment(segment);
+                    String updatedId =  updateOldSegment(segment, newTransaction);
                     if (updatedId != null) {
                         segmentsUpdated.add(updatedId);
                         continue;
                     }
                 } 
-                 segmentsUpdated.add(updateNewSegments());
+                 segmentsUpdated.add(updateNewSegments(segment, newTransaction));
             }
         return null;
     }
 
-    private String updateNewSegments() {
-        return null;
+    private String updateNewSegments(Segments segment, String newTransaction) {
+        segmentStoreRepository.deleteBySegment(segment.getId());
+        segmentStoreRepository.insert(segment, newTransaction);
+        entityRepository.deleteBySegmentId();
+        PageRequest pageable = PageRequest.of(0, 5000);
+        Page<SegmentStore> pagedSegments = segmentStoreRepository.getSegmentDetailsByIdAndTransaction(segment.getId(), newTransaction, pageable);
+        int totalPages = pagedSegments.getTotalPages();
+        for ( int page = 0; page< totalPages; page++) {
+            List<EntitySegments> entities = new ArrayList<>();
+            List<SegmentStore> segments = pagedSegments.getContent().subList(page*5000, (page+1)*5000);
+            segments.forEach(segmentData -> {
+                    entities.add(new EntitySegments("user",segmentData.getEntityID(), segmentData.getSegmentId()));
+            });
+            entityRepository.saveAll(entities);
+        }
+        return String.valueOf(segment.getId());
     }
 
-    private String updateOldSegment(Segments segment) {
-        String newTransaction = UUID.randomUUID().toString();
+    private String updateOldSegment(Segments segment, String newTransaction) {
         SegmentStore segmentStore = segmentStoreRepository.getSegmentDetailsById(String.valueOf(segment.getId()), 1 );
         if ( segmentStore == null ) {
             return null;
@@ -84,13 +105,21 @@ public class SegmentUpdateService {
         String oldTransaction = segmentStore.getTransaction();
         segmentStoreRepository.insert(segment, newTransaction);
         updateSegmentsData(segment, newTransaction, oldTransaction);
-        return null;
+        segmentStoreRepository.deleteBySegmentAndTransaction(segment.getId(), oldTransaction);
+        return String.valueOf(segment.getId());
     }
 
     private void updateSegmentsData(Segments segment, String newTransaction, String oldTransaction) {
-        segmentStoreRepository.deleteBulkOutdatedUsers( segment,  newTransaction,    oldTransaction);
-
-        segmentStoreRepository.addBulkNewUsers(segment,  newTransaction,    oldTransaction);
+        List<SegmentStore> deletedSegmentStoreList = segmentStoreRepository.deleteBulkOutdatedUsers( segment,  newTransaction,    oldTransaction);
+        List<String> deletedEntityIds = deletedSegmentStoreList.stream().map(deletedSegmentStoreItem -> deletedSegmentStoreItem.getEntityID()).collect(Collectors.toList());
+        Lists.partition(deletedEntityIds, 100).forEach(
+                sublist -> redisScripting.bitsetRemove(sublist)
+        );
+        List<SegmentStore> updatedSegmentStoreList =segmentStoreRepository.addBulkNewUsers(segment,  newTransaction,    oldTransaction);
+        List<String> updatedEntityIds = updatedSegmentStoreList.stream().map(updatedSegmentStoreItem -> updatedSegmentStoreItem.getEntityID()).collect(Collectors.toList());
+        Lists.partition(updatedEntityIds, 5000).forEach(
+                sublist -> redisScripting.bitsetRemove(sublist)
+        );
     }
 
     private Segments validateSegment(String segmentId) {

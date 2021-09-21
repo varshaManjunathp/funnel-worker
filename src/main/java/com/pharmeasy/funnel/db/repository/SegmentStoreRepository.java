@@ -7,7 +7,9 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.core.annotation.Order;
+import org.springframework.data.domain.*;
+import org.springframework.data.redis.connection.SortParameters;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
@@ -57,7 +59,27 @@ public class SegmentStoreRepository  {
         }
     }
 
-    public void deleteBulkOutdatedUsers(Segments segment, String newTransaction, String oldTransaction) {
+    public Page<SegmentStore> getSegmentDetailsByIdAndTransaction(long segmentId, String transaction, Pageable pageRequest) {
+      String countSQL = String.format("SELECT count(*) FROM %s WHERE segment_id = %d and transaction_id = %s ", getTableName(environment), segmentId, transaction);
+      int count = jdbcTemplate.queryForObject(countSQL, Integer.class);
+
+        String SQL = String.format("SELECT * FROM %s WHERE segment_id = %d and transaction_id = %s ORDER BY entity_id ASC LIMIT %d OFFSET %d", getTableName(environment), segmentId, transaction,
+                pageRequest.getPageSize(), pageRequest.getOffset());
+        List<SegmentStore> segmentStores =  jdbcTemplate.query(SQL, new SegmentStoreMapper());
+        return new PageImpl<SegmentStore>(segmentStores, pageRequest, count);
+    }
+
+    public void deleteBySegmentAndTransaction(long segmentId, String transaction) {
+        String SQL = String.format("DELETE from %s where segment_id = ? and transaction = ? ", getTableName(environment) );
+        jdbcTemplate.update(SQL, segmentId, transaction);
+    }
+
+    public void deleteBySegment(long segmentId) {
+        String SQL = String.format("DELETE from %s where segment_id = ? ", getTableName(environment) );
+        jdbcTemplate.update(SQL, segmentId);
+    }
+
+    public List<SegmentStore> deleteBulkOutdatedUsers(Segments segment, String newTransaction, String oldTransaction) {
         String sql = String.format("SELECT * from (\n" +
                 "\t\tWITH base AS ( SELECT  * from %s where segment_id = %d AND transaction = '%s')\n" +
                 "\t\tSELECT\n" +
@@ -77,11 +99,10 @@ public class SegmentStoreRepository  {
         }
         String deleteSQL = String.format("DELETE from %s where segment_id = ?", getTableName(environment) );
         jdbcTemplate.batchUpdate(deleteSQL, batchArgs);
-
-        //TODO: bitset/set remove
+        return segmentStoreList;
     }
 
-    public void addBulkNewUsers(Segments segment, String newTransaction, String oldTransaction) {
+    public List<SegmentStore> addBulkNewUsers(Segments segment, String newTransaction, String oldTransaction) {
         String sql = String.format("SELECT * from (\n" +
                 "\t\tWITH base AS ( SELECT  * from %s where segment_id = %d AND transaction = '%s')\n" +
                 "\t\tSELECT\n" +
@@ -102,7 +123,7 @@ public class SegmentStoreRepository  {
         String deleteSQL = String.format("INSERT into %s ( segment_id, entity, entity_id, source, transaction ) values (?, ?, ? , ?, ?)", getTableName(environment) );
         jdbcTemplate.batchUpdate(deleteSQL, batchArgs);
 
-        //TODO: bitset/set add
+        return segmentStoreList;
     }
 
 

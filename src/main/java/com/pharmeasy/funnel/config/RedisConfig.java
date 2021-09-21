@@ -36,11 +36,6 @@ public class RedisConfig {
     }
 
     @Bean
-    ChannelTopic topic() {
-        return new ChannelTopic("segments");
-    }
-
-    @Bean
     @Qualifier(value = "publisherTemplate")
     public RedisTemplate<String, Message> publisherTemplate() {
         final RedisTemplate<String, Message> template = new RedisTemplate<>();

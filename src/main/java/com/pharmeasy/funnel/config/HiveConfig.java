@@ -30,6 +30,8 @@ public class HiveConfig {
         dataSource.setDriverClassName("org.apache.hive.jdbc.HiveDriver");
         dataSource.setUsername(username);
         dataSource.setPassword(password);
+        dataSource.setMaxActive(10);
+        dataSource.setMaxIdle(5);
         return dataSource;
     }
 

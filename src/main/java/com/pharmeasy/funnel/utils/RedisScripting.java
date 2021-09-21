@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -13,9 +14,7 @@ import javax.annotation.PostConstruct;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Locale;
+import java.util.*;
 
 @Configuration
 @AllArgsConstructor
@@ -25,6 +24,9 @@ public class RedisScripting {
     private RedisTemplate<Object, Object> redisTemplate;
 
     HashMap<String, String> luaScripts;
+
+    @Value("${env}")
+    private String environment;
 
     RedisScripting() {
         this.luaScripts = new HashMap<>();
@@ -42,14 +44,32 @@ public class RedisScripting {
         }
     }
 
-    public Object execute(String script) {
+    public Object execute(String script, String key, Object... args) {
         RedisScript redisScript = RedisScript.of(this.luaScripts.get(script));
         redisTemplate.setEnableTransactionSupport(false);
-         return redisTemplate.execute(redisScript, Collections.singletonList("segments:worker:20"));
+         return redisTemplate.execute(redisScript, Collections.singletonList(key), args);
     }
 
     public String getSegmentType() {
         String script = "TYPE";
-        return ObjectUtils.nullSafeToString(execute(script));
+        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName()));
+    }
+
+    public String bitsetRemove(List<String> entityIds) {
+        String script = "REMOVE";
+        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(), entityIds));
+    }
+
+    public String bitsetAdd(List<String> entityIds) {
+        String script = "BITSET_ADD";
+        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(), entityIds));
+    }
+
+    private String getSetKeyName() {
+        return environment+":funnel:worker";
+    }
+
+    private String getTempKeyName() {
+        return environment+":funnel:worker";
     }
 }
