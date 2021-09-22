@@ -16,9 +16,13 @@ import com.pharmeasy.funnel.utils.RedisScripting;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.ListOperations;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -36,6 +40,8 @@ public class SegmentUpdateService {
     RedisQueueConsumer redisQueueConsumer;
 
     RedisScripting redisScripting;
+
+    RedisTemplate redisTemplate;
 
     private ObjectMapper objectMapper;
 
@@ -82,17 +88,25 @@ public class SegmentUpdateService {
     private String updateNewSegments(Segments segment, String newTransaction) {
         segmentStoreRepository.deleteBySegment(segment.getId());
         segmentStoreRepository.insert(segment, newTransaction);
-        entityRepository.deleteBySegmentId();
+        entityRepository.deleteBySegmentId(segment.getId());
         PageRequest pageable = PageRequest.of(0, 5000);
         Page<SegmentStore> pagedSegments = segmentStoreRepository.getSegmentDetailsByIdAndTransaction(segment.getId(), newTransaction, pageable);
         int totalPages = pagedSegments.getTotalPages();
         for ( int page = 0; page< totalPages; page++) {
             List<EntitySegments> entities = new ArrayList<>();
+            List<String> entityIds = new ArrayList<>();
             List<SegmentStore> segments = pagedSegments.getContent().subList(page*5000, (page+1)*5000);
             segments.forEach(segmentData -> {
                     entities.add(new EntitySegments("user",segmentData.getEntityID(), segmentData.getSegmentId()));
+                    entityIds.add(segmentData.getEntityID());
             });
             entityRepository.saveAll(entities);
+            if (segment.getStorage().equalsIgnoreCase("bitset")) {
+            redisScripting.bitsetAdd(entityIds);
+            }
+            else {
+                redisScripting.setAdd( entityIds);
+            }
         }
         return String.valueOf(segment.getId());
     }
@@ -118,7 +132,7 @@ public class SegmentUpdateService {
         List<SegmentStore> updatedSegmentStoreList =segmentStoreRepository.addBulkNewUsers(segment,  newTransaction,    oldTransaction);
         List<String> updatedEntityIds = updatedSegmentStoreList.stream().map(updatedSegmentStoreItem -> updatedSegmentStoreItem.getEntityID()).collect(Collectors.toList());
         Lists.partition(updatedEntityIds, 5000).forEach(
-                sublist -> redisScripting.bitsetRemove(sublist)
+                sublist -> redisScripting.bitsetAdd(sublist)
         );
     }
 

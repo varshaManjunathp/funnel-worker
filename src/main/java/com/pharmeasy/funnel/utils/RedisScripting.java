@@ -6,6 +6,8 @@ import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.BoundSetOperations;
+import org.springframework.data.redis.core.BoundZSetOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.util.ObjectUtils;
@@ -65,7 +67,12 @@ public class RedisScripting {
         return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(), entityIds));
     }
 
-    private String getSetKeyName() {
+    public String setAdd(List<String> entityIds) {
+        BoundSetOperations<Object, Object> setOperations = redisTemplate.boundSetOps(getSetKeyName());
+        return ObjectUtils.nullSafeToString(setOperations.add(entityIds));
+    }
+
+    public String getSetKeyName() {
         return environment+":funnel:worker";
     }
 

@@ -21,7 +21,7 @@ public class EntitySegments {
     private String entityId;
 
     @Column(name = "segment_id")
-    private int segmentId;
+    private long segmentId;
 
     public EntitySegments(String entity, String entityID, int segmentId) {
         this.entity = entity;

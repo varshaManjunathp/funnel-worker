@@ -43,6 +43,10 @@ public class HiveConfig {
     }
 
     public void migrate() {
+        jdbcTemplate.execute("SET hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager");
+        jdbcTemplate.execute("SET hive.support.concurrency=true");
+        jdbcTemplate.execute("SET hive.enforce.bucketing=true");
+        jdbcTemplate.execute("SET hive.exec.dynamic.partition.mode=nonstrict");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS funnel.segment_store_"+ environment +
                 " (\n" +
                 "\tsegment_id INTEGER   \n" +
@@ -50,7 +54,8 @@ public class HiveConfig {
                 "\t,entity_id VARCHAR(256)  \n" +
                 "\t,source VARCHAR(256)  \n" +
                 "\t,transaction VARCHAR(256)  \n" +
-                ")\n");
+                ") CLUSTERED BY (segment_id) INTO 2 BUCKETS STORED AS ORC " +
+                "TBLPROPERTIES (\"transactional\" = \"true\")\n");
     }
 
 }

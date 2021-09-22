@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
+import javax.transaction.Transactional;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -60,13 +61,13 @@ public class SegmentStoreRepository  {
     }
 
     public Page<SegmentStore> getSegmentDetailsByIdAndTransaction(long segmentId, String transaction, Pageable pageRequest) {
-      String countSQL = String.format("SELECT count(*) FROM %s WHERE segment_id = %d and transaction_id = %s ", getTableName(environment), segmentId, transaction);
+      String countSQL = String.format("SELECT count(*) FROM %s WHERE segment_id = %d and transaction = \"%s\" ", getTableName(environment), segmentId, transaction);
       int count = jdbcTemplate.queryForObject(countSQL, Integer.class);
 
-        String SQL = String.format("SELECT * FROM %s WHERE segment_id = %d and transaction_id = %s ORDER BY entity_id ASC LIMIT %d OFFSET %d", getTableName(environment), segmentId, transaction,
+        String SQL = String.format("SELECT * FROM %s WHERE segment_id = %d and transaction = \"%s\" ORDER BY entity_id ASC LIMIT %d OFFSET %d", getTableName(environment), segmentId, transaction,
                 pageRequest.getPageSize(), pageRequest.getOffset());
         List<SegmentStore> segmentStores =  jdbcTemplate.query(SQL, new SegmentStoreMapper());
-        return new PageImpl<SegmentStore>(segmentStores, pageRequest, count);
+        return new PageImpl<>(segmentStores, pageRequest, count);
     }
 
     public void deleteBySegmentAndTransaction(long segmentId, String transaction) {
@@ -74,6 +75,7 @@ public class SegmentStoreRepository  {
         jdbcTemplate.update(SQL, segmentId, transaction);
     }
 
+    @Transactional
     public void deleteBySegment(long segmentId) {
         String SQL = String.format("DELETE from %s where segment_id = ? ", getTableName(environment) );
         jdbcTemplate.update(SQL, segmentId);
