@@ -5,12 +5,11 @@ for i, arg in ipairs (ARGV)
         then
             qType = qType.ok
         end
-        if qType == 'set'
+        if qType == 'none'
         then
-            redis.call('SREM', KEYS[1], arg)
-        elseif qType == 'string'
-        then
-            redis.call('SETBIT', KEYS[1], arg, 0)
+            return 0
+        else
+            redis.call('rename', KEYS[1], arg)
         end
     end
-    return 0
+    return "0"

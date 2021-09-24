@@ -1,5 +1,9 @@
-local result;
-for i, userid in ipairs (ARGV)
+---
+--- Created by varsha.
+--- DateTime: 23/09/21 7:30 PM
+---
+
+for i, arg in ipairs (ARGV)
 do
     local qType = redis.call('type', KEYS[1]);
     if type(qType) == 'table'
@@ -8,12 +12,10 @@ do
     end
     if qType == 'set'
     then
-        result = redis.call('SISMEMBER', KEYS[1], userid)
+        redis.call('SREM', KEYS[1], arg)
     elseif qType == 'string'
     then
-        result = redis.call('GETBIT', KEYS[1], userid)
-    else
-        result = "0"
+        redis.call('SETBIT', KEYS[1], arg, 0)
     end
 end
-return result
+return "0"

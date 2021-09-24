@@ -14,6 +14,7 @@ import org.springframework.data.redis.serializer.GenericToStringSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import redis.clients.jedis.JedisPoolConfig;
 
 import java.time.Duration;
 
@@ -31,9 +32,13 @@ public class RedisConfig {
         redisStandaloneConfiguration.setPort(port);
        // redisStandaloneConfiguration.setPassword(RedisPassword.of(password));
         JedisConnectionFactory jedisConnectionFactory = new JedisConnectionFactory(redisStandaloneConfiguration);
+        jedisConnectionFactory.getPoolConfig().setMaxTotal(50);
+        jedisConnectionFactory.getPoolConfig().setMaxIdle(50);
         jedisConnectionFactory.afterPropertiesSet();
         return jedisConnectionFactory;
     }
+
+
 
     @Bean
     @Qualifier(value = "publisherTemplate")

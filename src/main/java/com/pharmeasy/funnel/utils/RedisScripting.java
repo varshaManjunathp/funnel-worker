@@ -6,6 +6,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.BoundSetOperations;
 import org.springframework.data.redis.core.BoundZSetOperations;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -35,7 +36,6 @@ public class RedisScripting {
     }
     @PostConstruct
     private void loadScripts() throws IOException {
-
         File folder = new File("src/main/resources/lua");
         File[] listOfFiles = folder.listFiles();
         for (File file : listOfFiles) {
@@ -48,35 +48,35 @@ public class RedisScripting {
 
     public Object execute(String script, String key, Object... args) {
         RedisScript redisScript = RedisScript.of(this.luaScripts.get(script));
-        redisTemplate.setEnableTransactionSupport(false);
-         return redisTemplate.execute(redisScript, Collections.singletonList(key), args);
+        return redisTemplate.execute(redisScript, Collections.singletonList(key), args);
     }
 
-    public String getSegmentType() {
+    public String getSegmentType(String segmentId) {
         String script = "TYPE";
-        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName()));
+        Object object = execute(script, getSetKeyName(segmentId));
+        return ObjectUtils.nullSafeToString(object);
     }
 
-    public String bitsetRemove(List<String> entityIds) {
+    public String bitsetRemove(String segmentId, List<String> entityIds) {
         String script = "REMOVE";
-        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(), entityIds));
+        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(segmentId), entityIds));
     }
 
-    public String bitsetAdd(List<String> entityIds) {
-        String script = "BITSET_ADD";
-        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(), entityIds));
+    public String bitsetAdd(String segmentId, List<String> entityIds) {
+        String script = "BITSETADD";
+        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(segmentId), entityIds.toArray()));
     }
 
-    public String setAdd(List<String> entityIds) {
-        BoundSetOperations<Object, Object> setOperations = redisTemplate.boundSetOps(getSetKeyName());
+    public String setAdd(String segmentId, List<String> entityIds) {
+        BoundSetOperations<Object, Object> setOperations = redisTemplate.boundSetOps(getSetKeyName(segmentId));
         return ObjectUtils.nullSafeToString(setOperations.add(entityIds));
     }
 
-    public String getSetKeyName() {
-        return environment+":funnel:worker";
+    public String getSetKeyName(String segmentId) {
+        return String.format("%s:funnel:segments:%s:set",environment,segmentId);
     }
 
-    private String getTempKeyName() {
-        return environment+":funnel:worker";
+    private String getTempKeyName(String segmentId) {
+        return String.format("%s:funnel:segments:%s:new",environment,segmentId);
     }
 }

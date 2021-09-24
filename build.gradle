@@ -24,30 +24,31 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-	implementation 'org.springframework.boot:spring-boot-starter-data-rest'
-	implementation 'org.springframework.boot:spring-boot-starter-security'
-	compileOnly 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis:2.5.4'
+	implementation 'org.springframework.boot:spring-boot-starter-data-rest:2.5.4'
+	implementation 'org.springframework.boot:spring-boot-starter-security:2.5.4'
+	compileOnly 'org.springframework.boot:spring-boot-starter-web:2.5.4'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa:2.5.4'
 	implementation 'redis.clients:jedis:3.6.3'
 	implementation 'org.springframework.kafka:spring-kafka'
-	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
-	implementation 'org.flywaydb:flyway-core:7.8.2'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc:2.5.4'
+	implementation 'org.flywaydb:flyway-core:7.14.1'
 	implementation group: 'org.apache.hadoop', name: 'hadoop-client', version: '3.3.0'
 	implementation 'com.github.sonus21:rqueue-spring-boot-starter:2.9.0-RELEASE'
 	implementation group: 'org.springframework.data', name: 'spring-data-commons', version: '2.5.5'
-	implementation 'com.auth0:java-jwt:3.15.0'
-	implementation('org.apache.hive:hive-jdbc:1.2.1') {
+	implementation 'com.auth0:java-jwt:3.18.2'
+	implementation('org.apache.hive:hive-jdbc:3.1.2') {
 		exclude group: 'org.eclipse.jetty.aggregate'
+		exclude(group: 'org.eclipse.jetty', module: 'jetty-runner')
 	}
 	compileOnly 'org.projectlombok:lombok'
 
-	developmentOnly 'org.springframework.boot:spring-boot-devtools'
-	runtimeOnly 'mysql:mysql-connector-java'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools:2.5.4'
+	runtimeOnly 'mysql:mysql-connector-java:8.0.25'
 	annotationProcessor 'org.projectlombok:lombok'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	testImplementation 'org.springframework.kafka:spring-kafka-test'
-	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test:2.5.4'
+	testImplementation 'org.springframework.kafka:spring-kafka-test:2.7.6'
+	testImplementation 'org.springframework.security:spring-security-test:5.5.1'
 }
 
 test {

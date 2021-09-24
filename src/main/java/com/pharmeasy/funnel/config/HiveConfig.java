@@ -43,10 +43,6 @@ public class HiveConfig {
     }
 
     public void migrate() {
-        jdbcTemplate.execute("SET hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager");
-        jdbcTemplate.execute("SET hive.support.concurrency=true");
-        jdbcTemplate.execute("SET hive.enforce.bucketing=true");
-        jdbcTemplate.execute("SET hive.exec.dynamic.partition.mode=nonstrict");
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS funnel.segment_store_"+ environment +
                 " (\n" +
                 "\tsegment_id INTEGER   \n" +

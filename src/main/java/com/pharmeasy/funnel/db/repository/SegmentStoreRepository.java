@@ -34,6 +34,13 @@ public class SegmentStoreRepository  {
     @Value("${env}")
     String environment;
 
+    private void setHiveUpdateProperties() {
+        jdbcTemplate.execute("SET hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager");
+        jdbcTemplate.execute("SET hive.support.concurrency=true");
+        jdbcTemplate.execute("SET hive.enforce.bucketing=true");
+        jdbcTemplate.execute("SET hive.exec.dynamic.partition.mode=nonstrict");
+    }
+
     public SegmentStore getSegmentDetailsById(String segmentId, int limit) {
         String SQL = "SELECT * FROM segment_store_"+ environment +" WHERE segment_id = "+ segmentId +" LIMIT "+ limit;
         return jdbcTemplate.queryForObject(SQL, new SegmentStoreMapper());
@@ -41,11 +48,11 @@ public class SegmentStoreRepository  {
 
     public void insert(Segments segment, String transaction) {
         String sql = String.format("INSERT INTO %s (entity_id, entity, source, segment_id, transaction)\n" +
-                "\t\tSELECT \n" +
+                "\t\t(SELECT \n" +
                 "\t\t\tres.user_id as entity_id, 'user' as entity, 'skull' as source, %d as segment_id, '%s' as transaction \n" +
                 "\t\tFROM (\n" +
                 "\t\t\t%s\n" +
-                "\t\t) as res", getTableName(environment), segment.getId(), transaction, segment.getQuery());
+                "\t\t) as res)", getTableName(environment), segment.getId(), transaction, segment.getQuery());
         try {
             jdbcTemplate.execute(sql);
         } catch (Exception e) {
@@ -64,6 +71,7 @@ public class SegmentStoreRepository  {
       String countSQL = String.format("SELECT count(*) FROM %s WHERE segment_id = %d and transaction = \"%s\" ", getTableName(environment), segmentId, transaction);
       int count = jdbcTemplate.queryForObject(countSQL, Integer.class);
 
+
         String SQL = String.format("SELECT * FROM %s WHERE segment_id = %d and transaction = \"%s\" ORDER BY entity_id ASC LIMIT %d OFFSET %d", getTableName(environment), segmentId, transaction,
                 pageRequest.getPageSize(), pageRequest.getOffset());
         List<SegmentStore> segmentStores =  jdbcTemplate.query(SQL, new SegmentStoreMapper());
@@ -75,9 +83,9 @@ public class SegmentStoreRepository  {
         jdbcTemplate.update(SQL, segmentId, transaction);
     }
 
-    @Transactional
     public void deleteBySegment(long segmentId) {
-        String SQL = String.format("DELETE from %s where segment_id = ? ", getTableName(environment) );
+        setHiveUpdateProperties();
+        String SQL = String.format("DELETE from %s where segment_id = \"?\"", getTableName(environment) );
         jdbcTemplate.update(SQL, segmentId);
     }
 

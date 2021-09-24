@@ -1,5 +1,6 @@
 package com.pharmeasy.funnel.service;
 
+import com.fasterxml.classmate.AnnotationOverrides;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
@@ -23,12 +24,14 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import javax.transaction.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
+@Transactional
 public class SegmentUpdateService {
 
     SegmentRepository segmentRepository;
@@ -46,43 +49,38 @@ public class SegmentUpdateService {
     private ObjectMapper objectMapper;
 
     public UpdateResponse updateSegments() {
-        return null;
+        try {
+            updateSegmentDataInBulk();
+        } catch (JsonProcessingException e) {
+        }
+        return UpdateResponse.builder().time(LocalDateTime.now()).status(Status.ACCEPTED).build();
     }
 
     public UpdateResponse updateSegment(UpdateRequest request) {
-         getSegmentData(request.getSegmentId());
-         return UpdateResponse.builder().time(LocalDateTime.now()).status(Status.ACCEPTED).build();
+         updateSegmentBasedOnType(request.getSegmentId());
+        return UpdateResponse.builder().time(LocalDateTime.now()).status(Status.ACCEPTED).build();
     }
 
-    @Async
-    public void getSegmentData(String segmentId) {
-        try {
-            List<String> segmentsToBeUpdated = updateSegmentData();
-        } catch (JsonProcessingException e) {
-        }
-    }
-
-    private List<String> updateSegmentData() throws JsonProcessingException {
+    private List<String> updateSegmentDataInBulk() throws JsonProcessingException {
         List<String> segmentsUpdated = new ArrayList<>();
         Set<String> messageSet = redisQueueConsumer.readJobFromQueue();
         Iterator itr = messageSet.iterator();
             while (itr.hasNext()) {
                 SegmentMessage message = objectMapper.readValue(itr.next().toString(), SegmentMessage.class);
-
                 String segmentId = message.getId();
-                Segments segment = validateSegment(segmentId);
-                String segmentType = redisScripting.getSegmentType();
-                String newTransaction = UUID.randomUUID().toString();
-                if (segmentType.equalsIgnoreCase("none")) {
-                    String updatedId =  updateOldSegment(segment, newTransaction);
-                    if (updatedId != null) {
-                        segmentsUpdated.add(updatedId);
-                        continue;
-                    }
-                } 
-                 segmentsUpdated.add(updateNewSegments(segment, newTransaction));
+                segmentsUpdated.add(updateSegmentBasedOnType(segmentId));
             }
-        return null;
+        return segmentsUpdated;
+    }
+
+    private String updateSegmentBasedOnType(String segmentId) {
+        Segments segment = validateSegment(segmentId);
+        String segmentType = redisScripting.getSegmentType(segmentId);
+        String newTransaction = UUID.randomUUID().toString();
+        if (segmentType.equalsIgnoreCase("none")) {
+            return updateOldSegment(segment, newTransaction);
+            }
+        return updateNewSegments(segment, newTransaction);
     }
 
     private String updateNewSegments(Segments segment, String newTransaction) {
@@ -95,17 +93,18 @@ public class SegmentUpdateService {
         for ( int page = 0; page< totalPages; page++) {
             List<EntitySegments> entities = new ArrayList<>();
             List<String> entityIds = new ArrayList<>();
-            List<SegmentStore> segments = pagedSegments.getContent().subList(page*5000, (page+1)*5000);
+            int minValue = Math.min((page+1) * 5000, pagedSegments.getContent().size());
+            List<SegmentStore> segments = pagedSegments.getContent().subList(page*5000, minValue);
             segments.forEach(segmentData -> {
                     entities.add(new EntitySegments("user",segmentData.getEntityID(), segmentData.getSegmentId()));
                     entityIds.add(segmentData.getEntityID());
             });
             entityRepository.saveAll(entities);
             if (segment.getStorage().equalsIgnoreCase("bitset")) {
-            redisScripting.bitsetAdd(entityIds);
+            redisScripting.bitsetAdd(String.valueOf(segment.getId()), entityIds);
             }
             else {
-                redisScripting.setAdd( entityIds);
+                redisScripting.setAdd(String.valueOf(segment.getId()), entityIds);
             }
         }
         return String.valueOf(segment.getId());
@@ -123,16 +122,33 @@ public class SegmentUpdateService {
         return String.valueOf(segment.getId());
     }
 
+    @Transactional
     private void updateSegmentsData(Segments segment, String newTransaction, String oldTransaction) {
         List<SegmentStore> deletedSegmentStoreList = segmentStoreRepository.deleteBulkOutdatedUsers( segment,  newTransaction,    oldTransaction);
         List<String> deletedEntityIds = deletedSegmentStoreList.stream().map(deletedSegmentStoreItem -> deletedSegmentStoreItem.getEntityID()).collect(Collectors.toList());
-        Lists.partition(deletedEntityIds, 100).forEach(
-                sublist -> redisScripting.bitsetRemove(sublist)
+        //TODO: transactional
+        //TODO : exception handling
+        Lists.partition(deletedEntityIds, 5000).forEach(
+                sublist -> {
+                    List<EntitySegments> entities = new ArrayList<>();
+                    sublist.forEach(entityId -> {
+                        entities.add(new EntitySegments("user",entityId, (int)segment.getId()));
+                    });
+                    entityRepository.deleteAll(entities);
+                    redisScripting.bitsetRemove( String.valueOf(segment.getId()),  sublist);
+                }
         );
-        List<SegmentStore> updatedSegmentStoreList =segmentStoreRepository.addBulkNewUsers(segment,  newTransaction,    oldTransaction);
+        List<SegmentStore> updatedSegmentStoreList = segmentStoreRepository.addBulkNewUsers(segment,  newTransaction,    oldTransaction);
         List<String> updatedEntityIds = updatedSegmentStoreList.stream().map(updatedSegmentStoreItem -> updatedSegmentStoreItem.getEntityID()).collect(Collectors.toList());
         Lists.partition(updatedEntityIds, 5000).forEach(
-                sublist -> redisScripting.bitsetAdd(sublist)
+                sublist -> {
+                    List<EntitySegments> entities = new ArrayList<>();
+                    sublist.forEach(entityId -> {
+                        entities.add(new EntitySegments("user",entityId, (int)segment.getId()));
+                    });
+                    entityRepository.saveAll(entities);
+                    redisScripting.bitsetAdd(String.valueOf(segment.getId()), sublist);
+                }
         );
     }
 
