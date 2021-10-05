@@ -26,7 +26,7 @@ public class RedisQueueProducer {
 
     private ObjectMapper objectMapper;
 
-    @Value("${env}:funnel:worker:segments:delayed")
+    @Value("${env}:funnel:worker:segments:tempDelayed")
     private String key;
 
     @Resource(name="publisherTemplate")

@@ -1,5 +1,6 @@
 package com.pharmeasy.funnel.db.repository;
 
+import com.pharmeasy.funnel.db.models.EntityJobResult;
 import com.pharmeasy.funnel.db.models.SegmentStore;
 import com.pharmeasy.funnel.db.models.Segments;
 import com.pharmeasy.funnel.model.SegmentStatus;
@@ -7,18 +8,17 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.annotation.Order;
-import org.springframework.data.domain.*;
-import org.springframework.data.redis.connection.SortParameters;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
-import javax.transaction.Transactional;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @NoArgsConstructor
@@ -42,6 +42,7 @@ public class SegmentStoreRepository  {
     }
 
     public SegmentStore getSegmentDetailsById(String segmentId, int limit) {
+        setHiveUpdateProperties();
         String SQL = "SELECT * FROM segment_store_"+ environment +" WHERE segment_id = "+ segmentId +" LIMIT "+ limit;
         return jdbcTemplate.queryForObject(SQL, new SegmentStoreMapper());
     }
@@ -89,51 +90,37 @@ public class SegmentStoreRepository  {
         jdbcTemplate.update(SQL, segmentId);
     }
 
-    public List<SegmentStore> deleteBulkOutdatedUsers(Segments segment, String newTransaction, String oldTransaction) {
-        String sql = String.format("SELECT * from (\n" +
-                "\t\tWITH base AS ( SELECT  * from %s where segment_id = %d AND transaction = '%s')\n" +
-                "\t\tSELECT\n" +
-                "\t\t\ta.entity_id as old_entity_id , b.entity_id as new_entity_id\n" +
-                "\t\tFROM %s a\n" +
-                "\t\t\tLEFT JOIN\n" +
-                "\t\tbase as b\n" +
-                "\t\t\tON\n" +
-                "\t\ta.entity_id = b.entity_id\n" +
-                "\t\t\tWHERE\n" +
-                "\t\ta.segment_id = %d AND a.transaction = '%s'\n" +
-                "\t) WHERE new_entity_id is NULL",  getTableName(environment), segment.getId(), newTransaction, getTableName(environment), segment.getId(), oldTransaction );
-        List<SegmentStore> segmentStoreList = jdbcTemplate.query(sql, new SegmentStoreMapper());
-        List<Object[]> batchArgs = new ArrayList<>();
-        for (SegmentStore segmentStore : segmentStoreList) {
-            batchArgs.add(new Object[] { segmentStore.getSegmentId() });
-        }
-        String deleteSQL = String.format("DELETE from %s where segment_id = ?", getTableName(environment) );
-        jdbcTemplate.batchUpdate(deleteSQL, batchArgs);
-        return segmentStoreList;
+    public List<EntityJobResult> deleteBulkOutdatedUsers(Segments segment, String newTransaction, String oldTransaction) {
+        String sql = String.format(
+                " WITH base AS ( SELECT  * from %s where segment_id = %d AND transaction = '%s') " +
+                " SELECT " +
+                " a.entity_id as old_entity_id , b.entity_id as new_entity_id " +
+                " FROM %s a " +
+                " LEFT JOIN " +
+                " base as b " +
+                " ON " +
+                " a.entity_id = b.entity_id " +
+                " WHERE " +
+                " a.segment_id = %d AND a.transaction = '%s' ",  getTableName(environment), segment.getId(), newTransaction, getTableName(environment), segment.getId(), oldTransaction );
+        List<EntityJobResult> entityJobResults = jdbcTemplate.query(sql, new EntityMapper());
+        return entityJobResults.stream().filter(entity -> entity.getNewEntityId()==null).collect(Collectors.toList());
     }
 
-    public List<SegmentStore> addBulkNewUsers(Segments segment, String newTransaction, String oldTransaction) {
-        String sql = String.format("SELECT * from (\n" +
-                "\t\tWITH base AS ( SELECT  * from %s where segment_id = %d AND transaction = '%s')\n" +
-                "\t\tSELECT\n" +
-                "\t\t\ta.entity_id as old_entity_id, b.entity_id as new_entity_id\n" +
-                "\t\tFROM %s a\n" +
-                "\t\t\tRIGHT JOIN\n" +
-                "\t\tbase as b\n" +
-                "\t\t\tON\n" +
-                "\t\ta.entity_id = b.entity_id\n" +
-                "\t\t\tAND\n" +
-                "\t\ta.segment_id = %d AND a.transaction = '%s'\n" +
-                "\t) WHERE old_entity_id is NULL",  getTableName(environment), segment.getId(), newTransaction, getTableName(environment), segment.getId(), oldTransaction );
-        List<SegmentStore> segmentStoreList = jdbcTemplate.query(sql, new SegmentStoreMapper());
-        List<Object[]> batchArgs = new ArrayList<>();
-        for (SegmentStore segmentStore : segmentStoreList) {
-            batchArgs.add(new Object[] { segmentStore.getSegmentId(), segmentStore.getEntity(), segmentStore.getEntityID(), segmentStore.getSource(), segmentStore.getTransaction() });
-        }
-        String deleteSQL = String.format("INSERT into %s ( segment_id, entity, entity_id, source, transaction ) values (?, ?, ? , ?, ?)", getTableName(environment) );
-        jdbcTemplate.batchUpdate(deleteSQL, batchArgs);
-
-        return segmentStoreList;
+    public List<EntityJobResult> addBulkNewUsers(Segments segment, String newTransaction, String oldTransaction) {
+        String sql = String.format(
+                " WITH base AS ( SELECT  * from %s where segment_id = %d AND transaction = '%s') " +
+                " SELECT " +
+                " a.entity_id as old_entity_id, b.entity_id as new_entity_id " +
+                " FROM %s a " +
+                " RIGHT JOIN " +
+                " base as b " +
+                " ON " +
+                " a.entity_id = b.entity_id " +
+                " AND " +
+                " a.segment_id = %d AND a.transaction = '%s' " +
+                "",  getTableName(environment), segment.getId(), newTransaction, getTableName(environment), segment.getId(), oldTransaction );
+        List<EntityJobResult> entityJobResults = jdbcTemplate.query(sql, new EntityMapper());
+        return entityJobResults.stream().filter(entity -> entity.getOldEntityId()==null).collect(Collectors.toList());
     }
 
 
@@ -143,14 +130,26 @@ public class SegmentStoreRepository  {
 }
 
  class SegmentStoreMapper implements RowMapper<SegmentStore> {
-    @Override
-    public SegmentStore mapRow(ResultSet rs, int rowNum) throws SQLException {
-                 SegmentStore segmentStore = new SegmentStore();
-                 segmentStore.setSegmentId(rs.getInt("segment_id"));
-                 segmentStore.setEntity(rs.getString("entity"));
-                 segmentStore.setEntityID(rs.getString("entity_id"));
-                 segmentStore.setTransaction(rs.getString("transaction"));
-                 segmentStore.setSource(rs.getString("source"));
-    return segmentStore;
-    }
-}
+     @Override
+     public SegmentStore mapRow(ResultSet rs, int rowNum) throws SQLException {
+         SegmentStore segmentStore = new SegmentStore();
+         segmentStore.setSegmentId(rs.getInt("segment_id"));
+         segmentStore.setEntity(rs.getString("entity"));
+         segmentStore.setEntityID(rs.getString("entity_id"));
+         segmentStore.setTransaction(rs.getString("transaction"));
+         segmentStore.setSource(rs.getString("source"));
+         return segmentStore;
+     }
+ }
+
+     class EntityMapper implements RowMapper<EntityJobResult> {
+
+         @Override
+         public EntityJobResult mapRow(ResultSet rs, int rowNum) throws SQLException {
+             EntityJobResult entityJobResult = new EntityJobResult();
+             entityJobResult.setOldEntityId(rs.getString("old_entity_id"));
+             entityJobResult.setNewEntityId(rs.getString("new_entity_id"));
+
+             return entityJobResult;
+         }
+     }

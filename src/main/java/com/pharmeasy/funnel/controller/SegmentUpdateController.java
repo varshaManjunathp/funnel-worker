@@ -19,7 +19,7 @@ public class SegmentUpdateController {
 
     @PostMapping(path = "/bulkUpdate")
     public UpdateResponse updateSegments() {
-       return segmentUpdateService.updateSegments();
+        return segmentUpdateService.updateSegments();
     }
 
     @PostMapping(path = "/update")

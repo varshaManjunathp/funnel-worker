@@ -1,0 +1,22 @@
+env: development
+project_name: funnel-worker
+prefix: development
+namespace: "platform"
+serviceaccount_name: funnel-development
+worker_fqdn: "dev-funnel-worker.staging.k8s.neontech.cloud"
+tag: "{{ prefix }}-{{ build_number }}"
+secret_name: "{{ prefix }}-{{ project_name }}"
+role_arn: "arn:aws:iam::549423712792:role/K8sFunnelStagRole"
+aws_profile: neon
+context: "pe-neon-eks-dev"
+service_name_worker: "{{ prefix }}-{{ project_name }}-worker-service"
+env_during_build: True
+min_replicas: 1
+max_replicas: 1
+cpu_limit: 400m
+memory_limit: 512Mi
+cpu_requested: 300m
+memory_requested: 300Mi
+configmap:
+  ENV: development
+  SERVICE: funnel

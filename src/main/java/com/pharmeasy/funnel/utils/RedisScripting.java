@@ -6,9 +6,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.BoundSetOperations;
-import org.springframework.data.redis.core.BoundZSetOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.util.ObjectUtils;
@@ -46,25 +44,29 @@ public class RedisScripting {
         }
     }
 
-    public Object execute(String script, String key, Object... args) {
-        RedisScript redisScript = RedisScript.of(this.luaScripts.get(script));
-        return redisTemplate.execute(redisScript, Collections.singletonList(key), args);
+    public Object execute(String script, Class classType, String key, Object... args) {
+        RedisScript redisScript = RedisScript.of(this.luaScripts.get(script), classType);
+         return redisTemplate.execute(redisScript, Collections.singletonList(key), args);
     }
 
-    public String getSegmentType(String segmentId) {
+    public Object getSegmentType(String segmentId) {
         String script = "TYPE";
-        Object object = execute(script, getSetKeyName(segmentId));
-        return ObjectUtils.nullSafeToString(object);
+        return ObjectUtils.nullSafeToString(execute(script, Boolean.class, getSetKeyName(segmentId)));
     }
 
     public String bitsetRemove(String segmentId, List<String> entityIds) {
-        String script = "REMOVE";
-        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(segmentId), entityIds));
+        String script = "REM";
+        return ObjectUtils.nullSafeToString(execute(script, Long.class, getTempKeyName(segmentId), entityIds.toArray()));
     }
 
     public String bitsetAdd(String segmentId, List<String> entityIds) {
         String script = "BITSETADD";
-        return ObjectUtils.nullSafeToString(execute(script, getSetKeyName(segmentId), entityIds.toArray()));
+        return ObjectUtils.nullSafeToString(execute(script, Long.class, getTempKeyName(segmentId), entityIds.toArray()));
+    }
+
+    public String rename(String segmentId) {
+        String script = "RENAME";
+        return ObjectUtils.nullSafeToString(execute(script, Long.class, getTempKeyName(segmentId), getSetKeyName(segmentId)));
     }
 
     public String setAdd(String segmentId, List<String> entityIds) {

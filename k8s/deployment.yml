@@ -1,0 +1,116 @@
+{% if configmap is defined %}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ project_name }}-{{ env }}-configmap"
+  namespace: "{{ namespace }}"
+data:
+{% for key, value in configmap.items() %}
+  {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ serviceaccount_name }}
+  namespace: {{ namespace }}
+  annotations:
+    eks.amazonaws.com/role-arn: {{ role_arn }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ prefix }}-{{ project_name }}-worker-deployment
+  namespace: {{ namespace }}
+  labels:
+    k8s-app: {{ project_name }}-worker
+spec:
+  progressDeadlineSeconds: 420
+  revisionHistoryLimit: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: {{ prefix }}-{{ project_name }}-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        k8s-app: "{{ prefix }}-{{ project_name }}-worker"
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: k8s-app
+                    operator: In
+                    values:
+                      - {{ prefix }}-{{ project_name }}-worker
+              topologyKey: "kubernetes.io/hostname"
+      serviceAccountName: {{ serviceaccount_name }}
+      containers:
+        - name: {{ project_name }}-worker
+          image: "549423712792.dkr.ecr.ap-south-1.amazonaws.com/{{ project_name }}:{{ tag }}"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+  {% if configmap is defined %}
+- configMapRef:
+    name: "{{ project_name }}-{{ env }}-configmap"
+  {% endif %}
+- secretRef:
+    name: {{ secret_name }}
+env:
+  - name: POD_TYPE
+    value: worker
+  - name: POD_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
+  - name: POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+resources:
+  limits:
+    cpu: {{ cpu_limit }}
+    memory: {{ memory_limit }}
+  requests:
+    cpu: {{ cpu_requested }}
+    memory: {{ memory_requested }}
+nodeSelector:
+  workloadType: general
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service_name_worker }}
+  namespace: {{ namespace }}
+  labels:
+    k8s-svc: {{ service_name_worker }}
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+  selector:
+    k8s-app: {{ prefix }}-{{ project_name }}-worker
+  type: ClusterIP
+---
+apiVersion: getambassador.io/v2
+kind: Mapping
+metadata:
+  name: {{ prefix }}-{{ project_name }}-worker
+  namespace: {{ namespace }}
+spec:
+  bypass_auth: true
+  host: {{ worker_fqdn }}
+  prefix: /
+  service: {{ service_name_worker }}.{{ namespace }}:3000
+  timeout_ms: 200000
+---

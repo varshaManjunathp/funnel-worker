@@ -12,4 +12,4 @@ for i, arg in ipairs (ARGV)
             redis.call('rename', KEYS[1], arg)
         end
     end
-    return "0"
+    return 0

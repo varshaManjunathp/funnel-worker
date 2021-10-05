@@ -18,4 +18,4 @@ do
         redis.call('SETBIT', KEYS[1], arg, 0)
     end
 end
-return "0"
+return 0
